@@ -1,8 +1,9 @@
-import type { CommandInteraction } from 'discord.js';
+import type { CommandInteraction, MessageEmbedOptions } from 'discord.js';
 import type { Command, IntentionalAny } from 'src/types';
 import type { Reminder } from 'models/reminders';
 import type { SlashCommandChannelOption, SlashCommandStringOption } from '@discordjs/builders';
 
+import { MessageEmbed } from 'discord.js';
 import { SlashCommandBuilder } from '@discordjs/builders';
 import { parseDate } from 'chrono-node';
 import { Op } from 'sequelize';
@@ -114,6 +115,41 @@ commandBuilder.addSubcommand(subcommand => {
     });
   return subcommand;
 });
+
+function getReminderEmbed(reminder: Reminder) {
+  const fields: MessageEmbedOptions['fields'] = [];
+  if (reminder.message) {
+    fields.push({
+      name: 'Message',
+      value: reminder.message,
+      inline: false,
+    });
+  }
+  fields.push({
+    name: 'Time',
+    value: getDateString(reminder.time),
+    inline: true,
+  });
+  if (reminder.interval) {
+    fields.push({
+      name: 'Interval',
+      value: `${reminder.interval} seconds`,
+      inline: true,
+    });
+  }
+  fields.push({
+    name: 'Channel',
+    value: `<#${reminder.channel_id}>`,
+    inline: false,
+  });
+  return new MessageEmbed({
+    title: reminder.message ? 'Reminder' : 'Timer',
+    fields,
+    footer: {
+      text: reminder.id,
+    },
+  });
+}
 
 function parseTimesArg(timesArg: string | null, timeZone: string | null): number[] {
   if (!timesArg) return [];
@@ -299,20 +335,10 @@ async function handleList(interaction: CommandInteraction) {
     return interaction.editReply(`There are no reminders for <#${channel.id}>${filterPart}`);
   }
 
-  const filterPart = filter ? ` (using filter **${filter}**)` : '';
-  const response = reminders.reduce((acc, reminder) => {
-    return (
-      // eslint-disable-next-line prefer-template
-      `${acc}\n`
-      + `ID: ${reminder.id}\n`
-      + `Time: ${getDateString(reminder.time)}\n`
-      + (reminder.interval ? `Interval: ${reminder.interval} seconds\n` : '')
-      + (reminder.message ? `Message: ${reminder.message}` : '')
-      + '\n'
-    );
-  }, `__Reminders for <#${channel.id}>__${filterPart}\n`);
-
-  return interaction.editReply(response);
+  return interaction.editReply({
+    content: filter ? `Using filter **${filter}**` : undefined,
+    embeds: reminders.map(reminder => getReminderEmbed(reminder)),
+  });
 }
 
 const RemindersCommand: Command = {
